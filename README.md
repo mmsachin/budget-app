@@ -48,4 +48,194 @@ a. Folder structure in github
 b. Code and instructions to for all the database tables.
 c. Backend and frontend logic only for the Employees and organization
 
+
+# Budget Management Application
+
+## Technology Stack
+- **Frontend**: React 18.2.0 with Tailwind CSS
+- **Backend**: FastAPI (Python)
+- **Database**: Google Cloud Spanner
+- **Infrastructure**: Google Cloud Platform (GCP)
+  - Cloud Run for backend deployment
+  - Cloud Storage for frontend hosting
+- **Repository**: GitHub
+
+## Project Structure
+```
+budget-management/
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Login.js
+│   │   │   └── EmployeeManagement.js
+│   │   ├── App.js
+│   │   └── index.js
+│   ├── public/
+│   ├── package.json
+│   └── tailwind.config.js
+└── backend/
+    ├── main.py
+    ├── requirements.txt
+    └── Dockerfile
+```
+
+## Features
+- Login authentication with passcode
+- Employee management (CRUD operations)
+- Employee data includes:
+  - LDAP ID (non-modifiable)
+  - Name
+  - Role
+  - Manager (optional)
+
+## Database Schema
+```sql
+CREATE TABLE employees (
+    ldap_id STRING(50) NOT NULL,
+    name STRING(100) NOT NULL,
+    role STRING(50) NOT NULL,
+    manager STRING(50),
+    created_at TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
+    updated_at TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
+) PRIMARY KEY (ldap_id);
+
+CREATE INDEX employees_by_manager ON employees(manager);
+```
+
+## Setup Instructions
+
+### 1. Local Development Setup
+
+#### Frontend Setup
+```bash
+# Create and navigate to frontend directory
+mkdir -p budget-management/frontend
+cd budget-management/frontend
+
+# Initialize npm and install dependencies
+npm init -y
+npm install react@18.2.0 react-dom@18.2.0 react-scripts@5.0.1 \
+  @tailwindcss/forms@0.5.7 tailwindcss@3.4.1 \
+  autoprefixer@10.4.17 postcss@8.4.35 \
+  @babel/plugin-proposal-private-property-in-object --legacy-peer-deps
+
+# Start development server
+npm start
+```
+
+#### Backend Setup
+```bash
+# Create and navigate to backend directory
+cd ../backend
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start backend server
+python main.py
+```
+
+### 2. GCP Deployment
+
+#### Prerequisites
+- GCP account and project
+- gcloud CLI installed and configured
+- Docker installed
+
+#### Enable GCP Services
+```bash
+gcloud services enable spanner.googleapis.com
+gcloud services enable cloudbuild.googleapis.com
+gcloud services enable run.googleapis.com
+```
+
+#### Database Setup
+```bash
+# Create Spanner instance
+gcloud spanner instances create budget-management \
+    --config=regional-us-central1 \
+    --description="Budget Management Instance" \
+    --nodes=1
+
+# Create database
+gcloud spanner databases create budget-db \
+    --instance=budget-management
+
+# Apply schema
+gcloud spanner databases ddl update budget-db \
+    --instance=budget-management \
+    --ddl="$(cat schema.sql)"
+```
+
+#### Backend Deployment
+```bash
+# Build and deploy to Cloud Run
+cd backend
+gcloud builds submit --tag gcr.io/$(gcloud config get-value project)/budget-app
+gcloud run deploy budget-app \
+    --image gcr.io/$(gcloud config get-value project)/budget-app \
+    --platform managed \
+    --region us-central1 \
+    --allow-unauthenticated
+```
+
+#### Frontend Deployment
+```bash
+# Build React application
+cd ../frontend
+npm run build
+
+# Create and configure storage bucket
+export BUCKET_NAME=$(gcloud config get-value project)-budget-app
+gsutil mb gs://$BUCKET_NAME
+gsutil -m cp -r build/* gs://$BUCKET_NAME
+gsutil iam ch allUsers:objectViewer gs://$BUCKET_NAME
+```
+
+## Security Considerations
+- Current authentication uses a simple passcode: "IKnowYou241202"
+- CORS is enabled for all origins in development
+- All Cloud Run services are public
+- Storage bucket has public read access
+
+## Future Enhancements
+- Implement proper authentication (e.g., OAuth, JWT)
+- Add department management
+- Implement budget allocation features
+- Add role-based access control
+- Add audit logging
+- Implement proper error handling and validation
+- Add comprehensive testing
+
+## Troubleshooting
+1. **422 Unprocessable Entity**: Check the data format being sent matches the API schema
+2. **CORS Issues**: Verify the backend CORS settings
+3. **Storage Access**: Ensure proper bucket permissions
+4. **Database Connection**: Verify Spanner instance and credentials
+
+## Monitoring and Maintenance
+- Use GCP Cloud Monitoring for backend services
+- Set up Cloud Logging for application logs
+- Regular database backups are handled by Spanner
+- Monitor Cloud Run service metrics
+
+## Useful Commands
+```bash
+# View Cloud Run logs
+gcloud runs logs read budget-app
+
+# Check Spanner instance status
+gcloud spanner instances describe budget-management
+
+# List deployed services
+gcloud run services list
+
+# Update frontend
+gsutil -m rsync -r build gs://$BUCKET_NAME
+```
+
 Make the code extensible for other features. Like UI should be built with all these features in mind but only for Employees and organization for now
